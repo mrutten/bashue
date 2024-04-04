@@ -102,7 +102,7 @@ menu_rooms() {
 	printf '7. Hallway\n'
 	printf '8. All lights\n'
 	printf 'b. Back to parent menu\n'
-	printf 'q. quit\n'
+	printf 'q. Quit\n'
 	read -p "> " CHOICE
 	case $CHOICE in
 	1)
@@ -197,6 +197,22 @@ get_states() {
 			printf "$i. ${LIGHTS[i]} off\n"
 		fi
 	done
+	printf 'b. Back to parent menu\n'
+	printf 'q. Quit\n'
+	read -p "> " CHOICE
+	case $CHOICE in
+	b)
+		menu_base
+		;;
+	q)
+		exit 0
+		;;
+	*)
+		echo "Invalid option. Press Enter to continue..."
+		read -r
+		menu_rooms
+		;;
+	esac
 }
 
 toggle_state() {

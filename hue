@@ -191,7 +191,7 @@ get_states() {
 		RESPONSE=$(curl -s -X GET http://${BRIDGE_IP}/api/${API_KEY}/lights/$LIGHT)
 		STATE=$(echo "$RESPONSE" | jq -r '.state.on')
 
-		if [ "$STATE" = "true" ]; then
+		if [[ "$STATE" = "true" ]]; then
 			printf "$i. ${LIGHTS[i]} on\n"
 		else
 			printf "$i. ${LIGHTS[i]} off\n"
@@ -220,7 +220,7 @@ toggle_state() {
 	RESPONSE=$(curl -s -X GET http://${BRIDGE_IP}/api/${API_KEY}/lights/$LIGHT)
 	STATE=$(echo "$RESPONSE" | jq -r '.state.on')
 
-	if [ "$STATE" = "true" ]; then
+	if [[ "$STATE" = "true" ]]; then
 		set_state $LIGHT '{"on":false}'
 	else
 		set_state $LIGHT '{"on":true}'

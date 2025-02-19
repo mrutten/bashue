@@ -6,6 +6,7 @@
 #
 # Authors
 # Mark Rutten 2024-03-21 - V 1.0
+# Mark Rutten 2025-02-19 - V 1.1
 #
 ##################################################
 
@@ -36,205 +37,199 @@ BRIDGE_IP="ENTER BRIDGE IP ADDRESS HERE"
 API_KEY="ENTER API KEY HERE"
 
 # Create a LIGHTS array
+min_index=999
+max_index=0
 mapfile -t RESPONSE < <(curl -s -H "Content-Type: application/json" http://${BRIDGE_IP}/api/${API_KEY}/lights/ | jq -r 'keys_unsorted[] as $key | "\($key): \(.[$key].name)"')
 declare -a LIGHTS
 for item in "${RESPONSE[@]}"; do
-	index=$(echo "$item" | cut -d ':' -f 1)
-	value=$(echo "$item" | cut -d ':' -f 2-)
-	LIGHTS[$index]="$value"
+    index=$(echo "$item" | cut -d ':' -f 1)
+    value=$(echo "$item" | cut -d ':' -f 2-)
+
+    # Retrieve min and max index of lights
+    if [[ $index =~ ^[0-9]+$ ]]; then
+        ((index < min_index)) && min_index=$index
+        ((index > max_index)) && max_index=$index
+    fi
+
+    LIGHTS[$index]="$value"
 done
 
 # Functions
 ok() {
-	echo -en "${BOLD}${GREEN}OK:${RESET} "
+    echo -en "${BOLD}${GREEN}OK:${RESET} "
 }
 
 info() {
-	echo -en "${BOLD}${WHITE}INFO:${RESET} "
+    echo -en "${BOLD}${WHITE}INFO:${RESET} "
 }
 
 warn() {
-	echo -en "${BOLD}${YELLOW}WARNING:${RESET} "
+    echo -en "${BOLD}${YELLOW}WARNING:${RESET} "
 }
 
 error() {
-	echo -en "${BOLD}${RED}ERROR:${RESET} "
+    echo -en "${BOLD}${RED}ERROR:${RESET} "
 }
 
-menu_base() {
-	clear
-	printf '1. Rooms\n'
-	printf '2. Lights\n'
-	printf '3. Get state\n'
-	printf 'q. Quit\n'
-	read -p "> " CHOICE
-	case $CHOICE in
-	1)
-		menu_rooms
-		;;
-	2)
-		menu_lights
-		;;
-	3)
-		get_states
-		;;
-	q)
-		exit 0
-		;;
-	*)
-		echo "Invalid option. Press Enter to continue..."
-		read -r
-		menu_base
-		;;
-	esac
-}
-
-menu_rooms() {
-	clear
-	local CHOICE
-	printf 'Toggle:\n\n'
-	printf '1. Livingroom\n'
-	printf '2. Kitchen\n'
-	printf '3. Guestroom\n'
-	printf '4. Bedroom\n'
-	printf '5. Bathroom\n'
-	printf '6. Toilet\n'
-	printf '7. Hallway\n'
-	printf '8. All lights\n'
-	printf 'b. Back to parent menu\n'
-	printf 'q. Quit\n'
-	read -p "> " CHOICE
-	case $CHOICE in
-	1)
-		toggle_state 2
-		toggle_state 10
-		menu_rooms
-		;;
-	2)
-		toggle_state 3
-		toggle_state 4
-		menu_rooms
-		;;
-	3)
-		toggle_state 5
-		menu_rooms
-		;;
-	4)
-		toggle_state 6
-		menu_rooms
-		;;
-	5)
-		toggle_state 7
-		menu_rooms
-		;;
-	6)
-		toggle_state 8
-		menu_rooms
-		;;
-	7)
-		toggle_state 9
-		menu_rooms
-		;;
-	8)
-		for ((i = 2; i <= 9; i++)); do
-			toggle_state $i
-		done
-		menu_rooms
-		;;
-	b)
-		menu_base
-		;;
-	q)
-		exit 0
-		;;
-	*)
-		echo "Invalid option. Press Enter to continue..."
-		read -r
-		menu_rooms
-		;;
-	esac
-}
-
-menu_lights() {
-	clear
-	local CHOICE
-	printf 'Toggle:\n\n'
-	for i in "${!LIGHTS[@]}"; do
-		printf "$i. ${LIGHTS[i]}\n"
-	done
-	printf 'b. Back to parent menu\n'
-	printf 'q: quit\n'
-	read -p "> " CHOICE
-	case $CHOICE in
-	[2-9])
-		toggle_state $CHOICE
-		menu_lights
-		;;
-	b)
-		menu_base
-		;;
-	q)
-		exit 0
-		;;
-	*)
-		echo "Invalid option. Press Enter to continue..."
-		read -r
-		menu_lights
-		;;
-	esac
-}
-
-get_states() {
-	clear
-	for i in "${!LIGHTS[@]}"; do
-		LIGHT=$i
-		RESPONSE=$(curl -s -X GET http://${BRIDGE_IP}/api/${API_KEY}/lights/$LIGHT)
-		STATE=$(echo "$RESPONSE" | jq -r '.state.on')
-
-		if [[ "$STATE" = "true" ]]; then
-			printf "$i. ${LIGHTS[i]} on\n"
-		else
-			printf "$i. ${LIGHTS[i]} off\n"
-		fi
-	done
-	printf 'b. Back to parent menu\n'
-	printf 'q. Quit\n'
-	read -p "> " CHOICE
-	case $CHOICE in
-	b)
-		menu_base
-		;;
-	q)
-		exit 0
-		;;
-	*)
-		echo "Invalid option. Press Enter to continue..."
-		read -r
-		menu_rooms
-		;;
-	esac
-}
-
-toggle_state() {
-	local LIGHT=$1
-	RESPONSE=$(curl -s -X GET http://${BRIDGE_IP}/api/${API_KEY}/lights/$LIGHT)
-	STATE=$(echo "$RESPONSE" | jq -r '.state.on')
-
-	if [[ "$STATE" = "true" ]]; then
-		set_state $LIGHT '{"on":false}'
-	else
-		set_state $LIGHT '{"on":true}'
-	fi
-}
-
-set_state() {
-	local LIGHT=$1
-	local BODY=$2
-	curl -s -X PUT -d "${BODY}" http://${BRIDGE_IP}/api/${API_KEY}/lights/$LIGHT/state >/dev/null 2>&1
+check_reachable() {
+    local LIGHT=$1
+    local RESPONSE=$(curl -s -X GET http://${BRIDGE_IP}/api/${API_KEY}/lights/$LIGHT)
+    local REACHABLE=$(echo "$RESPONSE" | jq -r '.state.reachable')
+    echo $REACHABLE
 }
 
 main() {
-	menu_base
+    local MIN_BRIGHTNESS=0
+    local MAX_BRIGHTNESS=254
+    local MIN_HUE=0
+    local MAX_HUE=65000
+    local MIN_SATURATION=0
+    local MAX_SATURATION=255
+    local GET_STATE=false
+
+    clear
+    printf 'Select an action to perform\n\n'
+    printf '1) Turn lights on\n'
+    printf '2) Turn lights off\n'
+    printf '3) Set brightness\n'
+    printf '4) Set hue\n'
+    printf '5) Set saturation\n'
+    printf '9) Get state\n'
+    printf 'q) Quit\n'
+
+    read -p "> " ACTION
+    case $ACTION in
+    1)
+        local BODY="{\"on\":true}"
+        ;;
+    2)
+        local BODY="{\"on\":false}"
+        ;;
+    3)
+        printf "Enter brightness ($MIN_BRIGHTNESS - $MAX_BRIGHTNESS) "
+
+        local BRIGHTNESS
+        read -p "> " BRIGHTNESS
+        if [[ $BRIGHTNESS -ge $MIN_BRIGHTNESS && $BRIGHTNESS -le $MAX_BRIGHTNESS ]]; then
+            local BODY="{\"bri\":$BRIGHTNESS}"
+        else
+            printf "Invalid value, valid values are between $MIN_BRIGHTNESS and $MAX_BRIGHTNESS. Press Enter to continue...\n"
+            read -r
+        fi
+        ;;
+    4)
+        printf "Enter hue ($MIN_HUE - $MAX_HUE) "
+
+        local HUE
+        read -p "> " HUE
+        if [[ $HUE -ge $MIN_HUE && $HUE -le $MAX_HUE ]]; then
+            local BODY="{\"hue\":$HUE}"
+        else
+            printf "Invalid value, valid values are between $MIN_HUE and $MAX_HUE. Press Enter to continue...\n"
+            read -r
+        fi
+        ;;
+    5)
+        printf "Enter saturation ($MIN_SATURATION - $MAX_SATURATION) "
+
+        local SATURATION
+        read -p "> " SATURATION
+        if [[ $SATURATION -ge $MIN_SATURATION && $SATURATION -le $MAX_SATURATION ]]; then
+            local BODY="{\"sat\":$SATURATION}"
+        else
+            printf "Invalid value, valid values are between $MIN_SATURATION and $MAX_SATURATION. Press Enter to continue...\n"
+            read -r
+        fi
+        ;;
+    9)
+        local GET_STATE=true
+        ;;
+    q)
+        exit 0
+        ;;
+    *)
+        echo "Invalid option. Press Enter to continue..."
+        read -r
+        menu_base
+        ;;
+    esac
+
+    show_lights
+
+    local CHOICE
+    read -p "> " CHOICE
+
+    case $CHOICE in
+    a)
+        if [[ $GET_STATE = true ]]; then
+            for LIGHT in "${!LIGHTS[@]}"; do
+                get_state $LIGHT
+            done
+        else
+            for LIGHT in "${!LIGHTS[@]}"; do
+                set_state $LIGHT $BODY
+            done
+        fi
+        echo "Press Enter to continue..."
+        read -r
+        ;;
+    b)
+        main
+        ;;
+    q)
+        exit 0
+        ;;
+    *)
+        if [[ $CHOICE -ge $min_index && $CHOICE -le $max_index ]]; then
+            LIGHT=$CHOICE
+
+            if [[ $GET_STATE = true ]]; then
+                get_state $LIGHT
+                echo "Press Enter to continue..."
+                read -r
+            else
+                set_state $LIGHT $BODY
+            fi
+        fi
+        ;;
+    esac
+    main
+}
+
+get_state() {
+    local LIGHT=$1
+    RESPONSE=$(curl -s -X GET http://${BRIDGE_IP}/api/${API_KEY}/lights/$LIGHT)
+    STATE=$(echo "$RESPONSE" | jq -r '.state')
+
+    printf "$LIGHT: $STATE\n"
+}
+
+set_state() {
+    local DEBUG=true
+
+    local LIGHT=$1
+    local BODY=$2
+    local REACHABLE=$(check_reachable $LIGHT)
+
+    if [[ $DEBUG = true ]]; then
+        echo "Light $LIGHT: Body: $BODY - Reachable: $REACHABLE"
+    fi
+
+    if [[ "$REACHABLE" = "true" ]]; then
+        curl -s -X PUT -d "${BODY}" http://${BRIDGE_IP}/api/${API_KEY}/lights/$LIGHT/state >/dev/null 2>&1
+    else
+        printf "$LIGHT is unreachable\n"
+    fi
+}
+
+show_lights() {
+    for i in "${!LIGHTS[@]}"; do
+        printf "$i. ${LIGHTS[i]}\n"
+    done
+
+    printf 'a) All lights\n'
+    printf 'b) Back to parent menu\n'
+    printf 'q) quit\n'
 }
 
 # Runtime

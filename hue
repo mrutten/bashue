@@ -7,8 +7,12 @@
 # Authors
 # Mark Rutten 2024-03-21 - V 1.0
 # Mark Rutten 2025-02-19 - V 1.1
+# Mark Rutten 2025-02-21 - V 1.2
 #
 ##################################################
+
+# Error handling
+set -Eeuo pipefail
 
 # Color constants
 BLACK='\033[30m'
@@ -85,7 +89,6 @@ main() {
     local MAX_HUE=65000
     local MIN_SATURATION=0
     local MAX_SATURATION=255
-    local GET_STATE=false
 
     clear
     printf 'Select an action to perform\n\n'
@@ -161,17 +164,21 @@ main() {
 
     case $CHOICE in
     a)
-        if [[ $GET_STATE = true ]]; then
-            for LIGHT in "${!LIGHTS[@]}"; do
-                get_state $LIGHT
-            done
-        else
+        # if GET_STATE is unset, some set_state is called
+        # otherwise get_state should be called
+        if [[ -z "${GET_STATE:-}" ]]; then
             for LIGHT in "${!LIGHTS[@]}"; do
                 set_state $LIGHT $BODY
             done
+        else
+            for LIGHT in "${!LIGHTS[@]}"; do
+                get_state $LIGHT
+            done
+            unset GET_STATE
+
+            echo "Press Enter to continue..."
+            read -r
         fi
-        echo "Press Enter to continue..."
-        read -r
         ;;
     b)
         main
@@ -183,12 +190,13 @@ main() {
         if [[ $CHOICE -ge $min_index && $CHOICE -le $max_index ]]; then
             LIGHT=$CHOICE
 
-            if [[ $GET_STATE = true ]]; then
+            if [[ -z "${GET_STATE:-}" ]]; then
+                set_state $LIGHT $BODY
+                unset GET_STATE
+            else
                 get_state $LIGHT
                 echo "Press Enter to continue..."
                 read -r
-            else
-                set_state $LIGHT $BODY
             fi
         fi
         ;;
